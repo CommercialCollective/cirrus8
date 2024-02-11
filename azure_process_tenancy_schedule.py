@@ -23,6 +23,16 @@ warnings.simplefilter("ignore")
 ##   See the License for the specific language governing permissions and
 ##   limitations under the License.
 
+def to_float_or_string(element: any) -> any:
+    #If you expect None to be passed:
+    if element is None: 
+        return ''
+    try:
+        value = float(element)
+        return value
+    except ValueError:
+        return str(element)
+
 load_dotenv()
 
 # This parameter accepts the filename of an xlsx file to be transformed and saved as a csv file
@@ -65,30 +75,47 @@ sas_url = sas_url.replace(" ", "%20")
 
 xls = pd.ExcelFile(sas_url)
 
+good_sheets = 0
+bad_sheets = []
+
+all_sheets = xls.sheet_names
 count = 0
-limit = 100
-for sheet_name in xls.sheet_names:
+limit = len(all_sheets)
+print(f'Processing {limit} sheets:')
+for sheet_name in all_sheets:
     try:
-        df = pd.read_excel(sas_url, skiprows=5, header=None, sheet_name=sheet_name, index_col=None, dtype={13: object, 14: object, 15: object, 16: object, 17: object, 18: object})
-        print(f'Worksheet: {sheet_name}')
-        print(df.iloc[0:7,21:])
+        df = pd.read_excel(sas_url, skiprows=5, header=None, sheet_name=sheet_name, index_col=None, 
+                           converters={15: to_float_or_string, 16: to_float_or_string, 17: to_float_or_string, 18: to_float_or_string, 19: to_float_or_string, 20: to_float_or_string})
+        # print(f'Worksheet: {sheet_name}')
+        # print(df.iloc[0:7,21:])
+        good_sheets += 1
         count += 1
     except Exception as e:
-        print(f'Worksheet: {sheet_name} - Error: Failed to load')
+        # print(f'Worksheet: {sheet_name} - Error: Failed to load')
+        bad_sheets.append(f'Worksheet: {sheet_name} - {e.args[0]}')
         continue
+    finally:
+        print(".", end="", flush=True)
     if count >= limit:
         break
-
+    
+print("")
+print(f'There were ({good_sheets}) good sheets.')
+print(f'The following ({len(bad_sheets)}) sheets failed when loading:')
+for bad_sheet in bad_sheets:
+    print(bad_sheet)
+    
+    
 # Cirrus8 Tenancy Schedule (Compact) - January 2024.xlsx
 
 # Extract the Month and Year from the file name
-file_parts = ''
-month = ''
-year = ''
+# file_parts = ''
+# month = ''
+# year = ''
 
-file_parts = excel_file_path.split(sep=' ')
-month = file_parts[5]
-year = file_parts[6].split(sep='.')[0]
+# file_parts = excel_file_path.split(sep=' ')
+# month = file_parts[5]
+# year = file_parts[6].split(sep='.')[0]
 
-print(f'Year: {year}, Month: {month}')
+# print(f'Year: {year}, Month: {month}')
 
