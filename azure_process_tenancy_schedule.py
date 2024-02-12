@@ -48,32 +48,40 @@ blob_name = f'{folder_name}/{excel_file_path}'
 
 
 # Create BlobServiceClient
-blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net", credential=account_key)
+# blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net", credential=account_key)
+connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+
+blob_service_client = BlobServiceClient.from_connection_string(connection_string)
+
 
 # Get the blob client
 blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
 
 # Define the permissions and expiry time for the SAS token
-sas_permissions = BlobSasPermissions(read=True, write=True, delete=True)  # Adjust permissions as needed
-expiry_time = datetime.utcnow() + timedelta(hours=1)  # Adjust the expiry time as needed
+# sas_permissions = BlobSasPermissions(read=True, write=True, delete=True)  # Adjust permissions as needed
+# expiry_time = datetime.utcnow() + timedelta(hours=1)  # Adjust the expiry time as needed
 
 # Generate SAS token
-sas_token = generate_blob_sas(account_name=account_name, 
-                               account_key=account_key,
-                               container_name=container_name,
-                               blob_name=blob_name,
-                               permission=sas_permissions,
-                               expiry=expiry_time)
+# sas_token = generate_blob_sas(account_name=account_name, 
+#                                account_key=account_key,
+#                                container_name=container_name,
+#                                blob_name=blob_name,
+#                                permission=sas_permissions,
+#                                expiry=expiry_time)
 
 # Construct the SAS URL
-sas_url = f"https://{account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
+# sas_url = f"https://{account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
+blob = 'cirrus8/Cirrus8 Tenancy Schedule (Compact) - January 2024.xlsx'
 
 # Encode url spaces as %20 so as to make a valid url
-sas_url = sas_url.replace(" ", "%20")
+# sas_url = sas_url.replace(" ", "%20")
 
 # print("Generated SAS URL:", sas_url)
 
-xls = pd.ExcelFile(sas_url)
+# blob = blob_client.download_blob().readall()
+
+xls = pd.ExcelFile(blob)
+
 
 good_sheets = 0
 bad_sheets = []
@@ -84,8 +92,7 @@ limit = len(all_sheets)
 print(f'Processing {limit} sheets:')
 for sheet_name in all_sheets:
     try:
-        df = pd.read_excel(sas_url, skiprows=5, header=None, sheet_name=sheet_name, index_col=None, 
-                           converters={15: to_float_or_string, 16: to_float_or_string, 17: to_float_or_string, 18: to_float_or_string, 19: to_float_or_string, 20: to_float_or_string})
+        df = pd.read_excel(blob, skiprows=5, header=None, sheet_name=sheet_name, index_col=None, engine="openpyxl", na_values=['Infinity'])
         # print(f'Worksheet: {sheet_name}')
         # print(df.iloc[0:7,21:])
         good_sheets += 1
@@ -100,10 +107,11 @@ for sheet_name in all_sheets:
         break
     
 print("")
-print(f'There were ({good_sheets}) good sheets.')
-print(f'The following ({len(bad_sheets)}) sheets failed when loading:')
-for bad_sheet in bad_sheets:
-    print(bad_sheet)
+print(f'There were ({good_sheets}) good sheets, and ({len(bad_sheets)}) bad sheets.')
+if len(bad_sheets) > 0:
+    print(f'The following ({len(bad_sheets)}) sheets failed when loading:')
+    for bad_sheet in bad_sheets:
+        print(bad_sheet)
     
     
 # Cirrus8 Tenancy Schedule (Compact) - January 2024.xlsx
