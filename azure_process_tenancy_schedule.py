@@ -42,44 +42,21 @@ excel_file_path = 'Cirrus8 Tenancy Schedule (Compact) - January 2024.xlsx'
 account_name = os.environ["AZURE_STORAGE_ACCOUNT"]
 account_key = os.environ["STORAGE_ACCESS_KEY"]
 container_name = os.environ["CONTAINER_NAME"]
+connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
 
 folder_name = 'Cirrus 8 Reports/Buildings/Tenancy Schedules'
 blob_name = f'{folder_name}/{excel_file_path}'
 
-
 # Create BlobServiceClient
-# blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net", credential=account_key)
-connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
-
 blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-
 
 # Get the blob client
 blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
 
-# Define the permissions and expiry time for the SAS token
-# sas_permissions = BlobSasPermissions(read=True, write=True, delete=True)  # Adjust permissions as needed
-# expiry_time = datetime.utcnow() + timedelta(hours=1)  # Adjust the expiry time as needed
-
-# Generate SAS token
-# sas_token = generate_blob_sas(account_name=account_name, 
-#                                account_key=account_key,
-#                                container_name=container_name,
-#                                blob_name=blob_name,
-#                                permission=sas_permissions,
-#                                expiry=expiry_time)
-
-# Construct the SAS URL
-# sas_url = f"https://{account_name}.blob.core.windows.net/{container_name}/{blob_name}?{sas_token}"
+# blob = blob_client.download_blob().readall()
 blob = 'cirrus8/Cirrus8 Tenancy Schedule (Compact) - January 2024.xlsx'
 
-# Encode url spaces as %20 so as to make a valid url
-# sas_url = sas_url.replace(" ", "%20")
-
-# print("Generated SAS URL:", sas_url)
-
-# blob = blob_client.download_blob().readall()
-
+# Read the excel file from the blob object
 xls = pd.ExcelFile(blob)
 
 
@@ -90,6 +67,8 @@ all_sheets = xls.sheet_names
 count = 0
 limit = len(all_sheets)
 print(f'Processing {limit} sheets:')
+
+# Retrieve each sheet from the excel workbook.
 for sheet_name in all_sheets:
     try:
         df = pd.read_excel(blob, skiprows=5, header=None, sheet_name=sheet_name, index_col=None, engine="openpyxl", na_values=['Infinity'])
@@ -115,15 +94,14 @@ if len(bad_sheets) > 0:
     
     
 # Cirrus8 Tenancy Schedule (Compact) - January 2024.xlsx
-
 # Extract the Month and Year from the file name
-# file_parts = ''
-# month = ''
-# year = ''
+file_parts = ''
+month = ''
+year = ''
 
-# file_parts = excel_file_path.split(sep=' ')
-# month = file_parts[5]
-# year = file_parts[6].split(sep='.')[0]
+file_parts = excel_file_path.split(sep=' ')
+month = file_parts[5]
+year = file_parts[6].split(sep='.')[0]
 
-# print(f'Year: {year}, Month: {month}')
+print(f'Year: {year}, Month: {month}')
 
