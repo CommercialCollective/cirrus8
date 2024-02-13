@@ -6,6 +6,7 @@ import pandas as pd
 import openpyxl
 import os
 import warnings
+import pyarrow
 warnings.simplefilter("ignore")
 
  
@@ -53,38 +54,32 @@ blob_service_client = BlobServiceClient.from_connection_string(connection_string
 # Get the blob client
 blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
 
-# blob = blob_client.download_blob().readall()
-blob = 'cirrus8/Cirrus8 Tenancy Schedule (Compact) - January 2024.xlsx'
+blob = blob_client.download_blob()
+# blob = 'cirrus8/Cirrus8 Tenancy Schedule (Compact) - January 2024.xlsx'
+
 
 # Read the excel file from the blob object
-xls = pd.ExcelFile(blob)
+with pd.ExcelFile(blob.content_as_bytes()) as xls:
+    good_sheets = 0
+    bad_sheets = []
+    count = 0
+    all_sheets = xls.sheet_names
+    limit = len(all_sheets)
+    print(f'Processing {limit} sheets:')
+    # Retrieve each sheet from the excel workbook.
+    for sheet_name in all_sheets:
+        try:
+            df = pd.read_excel(xls, skiprows=5, header=None, sheet_name=sheet_name, index_col=None, engine="openpyxl", na_values=['Infinity'])
+            good_sheets += 1
+            count += 1
+        except Exception as e:
+            bad_sheets.append(f'Worksheet: {sheet_name} - {e.args[0]}')
+            continue
+        finally:
+            print(".", end="", flush=True)
+        if count >= limit:
+            break
 
-
-good_sheets = 0
-bad_sheets = []
-
-all_sheets = xls.sheet_names
-count = 0
-limit = len(all_sheets)
-print(f'Processing {limit} sheets:')
-
-# Retrieve each sheet from the excel workbook.
-for sheet_name in all_sheets:
-    try:
-        df = pd.read_excel(blob, skiprows=5, header=None, sheet_name=sheet_name, index_col=None, engine="openpyxl", na_values=['Infinity'])
-        # print(f'Worksheet: {sheet_name}')
-        # print(df.iloc[0:7,21:])
-        good_sheets += 1
-        count += 1
-    except Exception as e:
-        # print(f'Worksheet: {sheet_name} - Error: Failed to load')
-        bad_sheets.append(f'Worksheet: {sheet_name} - {e.args[0]}')
-        continue
-    finally:
-        print(".", end="", flush=True)
-    if count >= limit:
-        break
-    
 print("")
 print(f'There were ({good_sheets}) good sheets, and ({len(bad_sheets)}) bad sheets.')
 if len(bad_sheets) > 0:
