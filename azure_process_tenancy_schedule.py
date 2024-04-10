@@ -32,11 +32,29 @@ def to_float_or_string(element: any) -> any:
         return value
     except ValueError:
         return str(element)
+    
+def get_row_property_value(df: pd.DataFrame, prop_name: str) -> str:
+    
+    property_value = ""
+
+    if df.isin([prop_name]).any().any():
+        row, column = np.where(df == prop_name)
+        row_index = df.index[row][0]
+        col_index = df.columns[column][0]
+        label_value = df.iloc[row_index][col_index]
+        idx = 1
+        property_value = df.iloc[row_index][col_index + idx]
+        while pd.isnull(property_value) :
+            idx += 1
+            property_value = df.iloc[row_index][col_index + idx]
+
+    return property_value
+
 
 load_dotenv()
 
 # This parameter accepts the filename of an xlsx file to be transformed and saved as a csv file
-excel_file_path = 'Cirrus8 Tenancy Schedule (Compact) - January 2024.xlsx'
+excel_file_path = 'Cirrus8 Tenancy Schedule (Compact) - April 2024.xlsx'
 
 #enter credentials
 account_name = os.environ["AZURE_STORAGE_ACCOUNT"]
@@ -73,37 +91,48 @@ sas_url = sas_url.replace(" ", "%20")
 
 # print("Generated SAS URL:", sas_url)
 
+# Load the workbook
 xls = pd.ExcelFile(sas_url)
+
+# Get the names of all sheets in the workbook
+sheet_names = xls.sheet_names
+
+# Create a dictionary of dataframes
+print(f'Loading {len(sheet_names)} worksheets into a dictionary ...')
+dfs = {sheet: xls.parse(sheet, header=None, index_col=None, skiprows=5) for sheet in sheet_names}
 
 good_sheets = 0
 bad_sheets = []
 
-all_sheets = xls.sheet_names
 count = 0
-limit = len(all_sheets)
-print(f'Processing {limit} sheets:')
-for sheet_name in all_sheets:
+limit = len(dfs)
+print(f'Processing {limit} dataframes:')
+for sheet_name in sheet_names:
     try:
-        df = pd.read_excel(sas_url, skiprows=5, header=None, sheet_name=sheet_name, index_col=None, 
-                           converters={15: to_float_or_string, 16: to_float_or_string, 17: to_float_or_string, 18: to_float_or_string, 19: to_float_or_string, 20: to_float_or_string})
-        # print(f'Worksheet: {sheet_name}')
-        # print(df.iloc[0:7,21:])
+        df = dfs[sheet_name]
+        
+        prop_name = 'Property ID:'
+        prop_id = get_row_property_value(df, prop_name)
+        
+        df = df.iloc[4:]
+        df = df.dropna(axis=1, how='all')
+
         good_sheets += 1
         count += 1
     except Exception as e:
         # print(f'Worksheet: {sheet_name} - Error: Failed to load')
         bad_sheets.append(f'Worksheet: {sheet_name} - {e.args[0]}')
         continue
-    finally:
-        print(".", end="", flush=True)
     if count >= limit:
         break
     
 print("")
-print(f'There were ({good_sheets}) good sheets.')
-print(f'The following ({len(bad_sheets)}) sheets failed when loading:')
-for bad_sheet in bad_sheets:
-    print(bad_sheet)
+if (good_sheets > 0):
+    print(f'There were ({good_sheets}) good sheets.')
+if (len(bad_sheets) > 0):
+    print(f'The following ({len(bad_sheets)}) sheets failed when loading:')
+    for bad_sheet in bad_sheets:
+        print(bad_sheet)
     
     
 # Cirrus8 Tenancy Schedule (Compact) - January 2024.xlsx
