@@ -6,6 +6,7 @@ import pandas as pd
 import openpyxl
 import os
 import warnings
+import pyarrow
 warnings.simplefilter("ignore")
 
  
@@ -60,13 +61,13 @@ excel_file_path = 'Cirrus8 Tenancy Schedule (Compact) - April 2024.xlsx'
 account_name = os.environ["AZURE_STORAGE_ACCOUNT"]
 account_key = os.environ["STORAGE_ACCESS_KEY"]
 container_name = os.environ["CONTAINER_NAME"]
+connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
 
 folder_name = 'Cirrus 8 Reports/Buildings/Tenancy Schedules'
 blob_name = f'{folder_name}/{excel_file_path}'
 
-
 # Create BlobServiceClient
-blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net", credential=account_key)
+blob_service_client = BlobServiceClient.from_connection_string(connection_string)
 
 # Get the blob client
 blob_client = blob_service_client.get_blob_client(container=container_name, blob=blob_name)
@@ -136,15 +137,14 @@ if (len(bad_sheets) > 0):
     
     
 # Cirrus8 Tenancy Schedule (Compact) - January 2024.xlsx
-
 # Extract the Month and Year from the file name
-# file_parts = ''
-# month = ''
-# year = ''
+file_parts = ''
+month = ''
+year = ''
 
-# file_parts = excel_file_path.split(sep=' ')
-# month = file_parts[5]
-# year = file_parts[6].split(sep='.')[0]
+file_parts = excel_file_path.split(sep=' ')
+month = file_parts[5]
+year = file_parts[6].split(sep='.')[0]
 
-# print(f'Year: {year}, Month: {month}')
+print(f'Year: {year}, Month: {month}')
 
