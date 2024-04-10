@@ -3,10 +3,9 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import numpy as np
 import pandas as pd
-import openpyxl
 import os
 import warnings
-import pyarrow
+
 warnings.simplefilter("ignore")
 
  
