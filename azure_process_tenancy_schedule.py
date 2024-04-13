@@ -192,12 +192,16 @@ bad_sheets = []
 count = 0
 limit = len(dfs)
 print(f'Processing {limit} dataframes:')
+
+# Existing DataFrame
+df_tenancy_schedules = pd.DataFrame({})
+
 for sheet_name in sheet_names:
     try:
         df = dfs[sheet_name]
         
         prop_name = 'Property ID:'
-        prop_id = get_row_property_value(df, prop_name)
+        property_id = get_row_property_value(df, prop_name)
         
         # Remove rows
         df = df.iloc[2:]
@@ -232,32 +236,50 @@ for sheet_name in sheet_names:
         lease_code_rows = find_non_empty_rows(df, column_index=lease_col)
         for code_row in lease_code_rows:
             unit_row, unit_col = extract_indexes(header_dict, 'Unit')
-            unit = df.loc[code_row, unit_col].strip()
+            unit = df.loc[code_row, unit_col]
             
-            lease_code = df.loc[code_row, lease_col].strip()
+            lease_code = df.loc[code_row, lease_col]
             
             start_row, start_col = extract_indexes(header_dict, 'Start')
-            lease_terms_start = df.loc[code_row, start_col].strip()
+            lease_terms_start = df.loc[code_row, start_col] if lease_code != 'Vacant' else ''
             
             expiry_row, expiry_col = extract_indexes(header_dict, 'Expiry')
-            lease_terms_expiry = df.loc[code_row, expiry_col].strip()
-            lease_terms_term = df.loc[code_row + 1, expiry_col].strip()
-            lease_terms_option = df.loc[code_row + 2, expiry_col].strip()
+            lease_terms_expiry = df.loc[code_row, expiry_col] if lease_code != 'Vacant' else ''
+            lease_terms_term = df.loc[code_row + 1, expiry_col] if lease_code != 'Vacant' else ''
+            lease_terms_option = df.loc[code_row + 2, expiry_col] if lease_code != 'Vacant' else ''
             
             nla_row, nla_col = extract_indexes(header_dict, 'NLA')
-            lease_terms_nla = df.loc[code_row, nla_col]
+            lease_terms_nla = df.loc[code_row, nla_col] if lease_code != 'Vacant' else ''
             
             date_row, date_col = extract_indexes(header_dict, 'Date')
-            rent_review_date = df.loc[code_row, date_col].strip()
+            rent_review_date = df.loc[code_row, date_col] if lease_code != 'Vacant' else ''
             
             review_desc_row, review_desc_col = extract_indexes(header_dict, 'Rent Review Description')
-            rent_review_description = df.loc[code_row, review_desc_col].strip()
+            rent_review_description = df.loc[code_row, review_desc_col] if lease_code != 'Vacant' else ''
             
             review_type_row, review_type_col = extract_indexes(header_dict, 'Type')
-            rent_review_type = df.loc[code_row, review_type_col].strip()
-            
-            print()
+            rent_review_type = df.loc[code_row, review_type_col] if lease_code != 'Vacant' else ''
+         
+            # New record to append
+            new_tenancy = {
+                'effective_year': effective_year, 
+                'effective_month': effective_month,
+                'property_id': property_id,
+                'lease_code': lease_code,
+                'lease_unit': unit,
+                'lease_terms_start': lease_terms_start,
+                'lease_terms_expiry': lease_terms_expiry,
+                'lease_terms_term': lease_terms_term,
+                'lease_terms_option': lease_terms_option,
+                'lease_terms_nla': lease_terms_nla,
+                'rent_review_date': rent_review_date,
+                'rent_review_description': rent_review_description,
+                'rent_review_type': rent_review_type
+                }
 
+            # Append the new record to the DataFrame
+            tenancy_df = pd.DataFrame(new_tenancy, index=[0])
+            df_tenancy_schedules = pd.concat([df_tenancy_schedules, tenancy_df])
 
         good_sheets += 1
         count += 1
@@ -275,5 +297,10 @@ if (len(bad_sheets) > 0):
     print(f'The following ({len(bad_sheets)}) sheets failed when loading:')
     for bad_sheet in bad_sheets:
         print(bad_sheet)
-    
-    
+
+# Fill NaN values with a specific value
+df_tenancy_schedules.fillna('', inplace=True)  # Fill with '' 
+
+# Save the DataFrame as a CSV file
+df_tenancy_schedules.to_csv('april_2024_tenancy_schedules.csv', index=False)  # Set index=False to exclude row indexes from the CSV
+print('Saved tenancy schedule to: april_2024_tenancy_schedules.csv')
