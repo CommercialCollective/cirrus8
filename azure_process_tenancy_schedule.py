@@ -194,7 +194,8 @@ limit = len(dfs)
 print(f'Processing {limit} dataframes:')
 
 # Existing DataFrame
-df_tenancy_schedules = pd.DataFrame({})
+tenancy_schedules_df = pd.DataFrame({})
+tenancy_current_charges_df = pd.DataFrame({})
 
 for sheet_name in sheet_names:
     try:
@@ -208,7 +209,7 @@ for sheet_name in sheet_names:
 
         # Create list of table column labels
         header_items = ["Unit", "Lease Code", "Start", "Expiry", "NLA", "Account", "Description", 
-                        "Effective", "Per", "Monthly", "Annual", "Spaces", "Date", "Description", "Type"]
+                        "Effective", "Per m", "Monthly", "Annual", "Spaces", "Date", "Description", "Type"]
 
         # Create an empty dictionary
         header_dict = {}
@@ -230,6 +231,14 @@ for sheet_name in sheet_names:
         # Remove rows
         df = df.iloc[2:]
         
+        # New tenancy charges
+        account_row, account_col = extract_indexes(header_dict, 'Account')
+        desc_row, desc_col = extract_indexes(header_dict, 'Description')
+        effective_row, effective_col = extract_indexes(header_dict, 'Effective')
+        per_row, per_col = extract_indexes(header_dict, 'Per m')
+        monthly_row, monthly_col = extract_indexes(header_dict, 'Monthly')
+        annual_row, annual_col = extract_indexes(header_dict, 'Annual')
+        spaces_row, spaces_col = extract_indexes(header_dict, 'Spaces')
         
         # Get Lease Code Rows for sheet
         lease_row, lease_col = extract_indexes(header_dict, 'Lease Code')
@@ -245,8 +254,8 @@ for sheet_name in sheet_names:
             
             expiry_row, expiry_col = extract_indexes(header_dict, 'Expiry')
             lease_terms_expiry = df.loc[code_row, expiry_col] if lease_code != 'Vacant' else ''
-            lease_terms_term = df.loc[code_row + 1, expiry_col] if lease_code != 'Vacant' else ''
-            lease_terms_option = df.loc[code_row + 2, expiry_col] if lease_code != 'Vacant' else ''
+            lease_terms_term = str(df.loc[code_row + 1, expiry_col]).strip() if lease_code != 'Vacant' and pd.notnull(df.loc[code_row + 1, expiry_col]) else ''
+            lease_terms_option = str(df.loc[code_row + 2, expiry_col]).strip() if lease_code != 'Vacant' and pd.notnull(df.loc[code_row + 2, expiry_col]) else ''
             
             nla_row, nla_col = extract_indexes(header_dict, 'NLA')
             lease_terms_nla = df.loc[code_row, nla_col] if lease_code != 'Vacant' else ''
@@ -255,11 +264,43 @@ for sheet_name in sheet_names:
             rent_review_date = df.loc[code_row, date_col] if lease_code != 'Vacant' else ''
             
             review_desc_row, review_desc_col = extract_indexes(header_dict, 'Rent Review Description')
-            rent_review_description = df.loc[code_row, review_desc_col] if lease_code != 'Vacant' else ''
+            rent_review_description = str(df.loc[code_row, review_desc_col]).strip() if lease_code != 'Vacant' and pd.notnull(df.loc[code_row, review_desc_col]) else ''
             
             review_type_row, review_type_col = extract_indexes(header_dict, 'Type')
-            rent_review_type = df.loc[code_row, review_type_col] if lease_code != 'Vacant' else ''
-         
+            rent_review_type = str(df.loc[code_row, review_type_col]).strip() if lease_code != 'Vacant' and pd.notnull(df.loc[code_row, review_type_col]) else ''
+
+            # New tenancy charges
+            charges_offset = 0
+            while pd.notnull(df.loc[code_row + charges_offset, account_col]):
+                charge_account = df.loc[code_row + charges_offset, account_col]
+                charge_description = df.loc[code_row + charges_offset, desc_col]
+                charge_effective_date = df.loc[code_row + charges_offset, effective_col]
+                charge_dollars_per_m_sq = "{:.2f}".format(df.loc[code_row + charges_offset, per_col]) if pd.notnull(df.loc[code_row + charges_offset, per_col]) and isinstance(df.loc[code_row + charges_offset, per_col], float) else ''
+                charge_dollars_per_month = "{:.2f}".format(df.loc[code_row + charges_offset, monthly_col]) if pd.notnull(df.loc[code_row + charges_offset, monthly_col]) and isinstance(df.loc[code_row + charges_offset, monthly_col], float) else ''
+                charge_dollars_per_annum = "{:.2f}".format(df.loc[code_row + charges_offset, annual_col]) if pd.notnull(df.loc[code_row + charges_offset, annual_col]) and isinstance(df.loc[code_row + charges_offset, annual_col], float) else ''
+                charge_parking_spaces = df.loc[code_row + charges_offset, spaces_col]
+                
+                # New record to append
+                new_charge = {
+                    'effective_year': effective_year, 
+                    'effective_month': effective_month,
+                    'property_id': property_id,
+                    'lease_code': lease_code,
+                    'charge_account': charge_account,
+                    'charge_description': charge_description,
+                    'charge_effective_date': charge_effective_date,
+                    'charge_dollars_per_m_sq': charge_dollars_per_m_sq,
+                    'charge_dollars_per_month': charge_dollars_per_month,
+                    'charge_dollars_per_annum': charge_dollars_per_annum,
+                    'charge_parking_spaces': charge_parking_spaces
+                    }
+
+                # Append the new charge to the DataFrame
+                charge_df = pd.DataFrame(new_charge, index=[0])
+                tenancy_current_charges_df = pd.concat([tenancy_current_charges_df, charge_df])
+                                
+                charges_offset += 1
+            
             # New record to append
             new_tenancy = {
                 'effective_year': effective_year, 
@@ -277,9 +318,9 @@ for sheet_name in sheet_names:
                 'rent_review_type': rent_review_type
                 }
 
-            # Append the new record to the DataFrame
+            # Append the new tenancy to the DataFrame
             tenancy_df = pd.DataFrame(new_tenancy, index=[0])
-            df_tenancy_schedules = pd.concat([df_tenancy_schedules, tenancy_df])
+            tenancy_schedules_df = pd.concat([tenancy_schedules_df, tenancy_df])
 
         good_sheets += 1
         count += 1
@@ -299,8 +340,12 @@ if (len(bad_sheets) > 0):
         print(bad_sheet)
 
 # Fill NaN values with a specific value
-df_tenancy_schedules.fillna('', inplace=True)  # Fill with '' 
+tenancy_schedules_df.fillna('', inplace=True)  # Fill with '' 
 
 # Save the DataFrame as a CSV file
-df_tenancy_schedules.to_csv('april_2024_tenancy_schedules.csv', index=False)  # Set index=False to exclude row indexes from the CSV
+tenancy_schedules_df.to_csv('april_2024_tenancy_schedules.csv', index=False)  # Set index=False to exclude row indexes from the CSV
 print('Saved tenancy schedule to: april_2024_tenancy_schedules.csv')
+
+tenancy_current_charges_df.to_csv('april_2024_tenancy_charges.csv', index=False)  # Set index=False to exclude row indexes from the CSV
+print('Saved tenancy schedule to: april_2024_tenancy_charges.csv')
+
