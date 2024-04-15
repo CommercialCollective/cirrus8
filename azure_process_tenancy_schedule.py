@@ -156,12 +156,15 @@ def extract_indexes(dictionary: dict, key: str) -> tuple[int, int]:
     Returns:
         tuple: A tuple containing the row and column indexes.
     """
-    if key in dictionary:
-        row_index, col_index = dictionary[key]
-        return row_index, col_index
-    else:
-        return -1, -1
-
+    try:
+        if key in dictionary:
+            row_index, col_index = dictionary[key]
+            return row_index, col_index
+        else:
+            return -1, -1
+    except Exception as e:
+        print(e)
+        print()
 
 load_dotenv()
 
@@ -213,7 +216,7 @@ for sheet_name in sheet_names:
 
         # Create an empty dictionary
         header_dict = {}
-
+        
         last_item = ""
         # Populate the dictionary by iterating over the list of header_items
         for item in header_items:
@@ -247,7 +250,7 @@ for sheet_name in sheet_names:
             unit_row, unit_col = extract_indexes(header_dict, 'Unit')
             unit = df.loc[code_row, unit_col]
             
-            lease_code = df.loc[code_row, lease_col]
+            lease_code = df.loc[code_row, lease_col].strip()
             
             start_row, start_col = extract_indexes(header_dict, 'Start')
             lease_terms_start = df.loc[code_row, start_col] if lease_code != 'Vacant' else ''
@@ -271,37 +274,42 @@ for sheet_name in sheet_names:
 
             # New tenancy charges
             charges_offset = 0
-            while pd.notnull(df.loc[code_row + charges_offset, account_col]):
-                charge_account = df.loc[code_row + charges_offset, account_col]
-                charge_description = df.loc[code_row + charges_offset, desc_col]
-                charge_effective_date = df.loc[code_row + charges_offset, effective_col]
-                charge_dollars_per_m_sq = "{:.2f}".format(df.loc[code_row + charges_offset, per_col]) if pd.notnull(df.loc[code_row + charges_offset, per_col]) and isinstance(df.loc[code_row + charges_offset, per_col], float) else ''
-                charge_dollars_per_month = "{:.2f}".format(df.loc[code_row + charges_offset, monthly_col]) if pd.notnull(df.loc[code_row + charges_offset, monthly_col]) and isinstance(df.loc[code_row + charges_offset, monthly_col], float) else ''
-                charge_dollars_per_annum = "{:.2f}".format(df.loc[code_row + charges_offset, annual_col]) if pd.notnull(df.loc[code_row + charges_offset, annual_col]) and isinstance(df.loc[code_row + charges_offset, annual_col], float) else ''
-                charge_parking_spaces = df.loc[code_row + charges_offset, spaces_col]
-                
-                # New record to append
-                new_charge = {
-                    'effective_year': effective_year, 
-                    'effective_month': effective_month,
-                    'property_id': property_id,
-                    'lease_code': lease_code,
-                    'charge_account': charge_account,
-                    'charge_description': charge_description,
-                    'charge_effective_date': charge_effective_date,
-                    'charge_dollars_per_m_sq': charge_dollars_per_m_sq,
-                    'charge_dollars_per_month': charge_dollars_per_month,
-                    'charge_dollars_per_annum': charge_dollars_per_annum,
-                    'charge_parking_spaces': charge_parking_spaces
-                    }
+            try:
+                while (pd.notnull(df.loc[code_row + charges_offset, spaces_col]) or lease_code != 'Vacant'):
+                    if pd.notnull(df.loc[code_row + charges_offset, account_col]) and df.loc[code_row + charges_offset, desc_col] != 'Total':
+                        charge_account = df.loc[code_row + charges_offset, account_col]
+                        charge_description = df.loc[code_row + charges_offset, desc_col]
+                        charge_effective_date = df.loc[code_row + charges_offset, effective_col]
+                        charge_dollars_per_m_sq = round(float(df.loc[code_row + charges_offset, per_col]), 2) if pd.notnull(df.loc[code_row + charges_offset, per_col]) else ''
+                        charge_dollars_per_month = round(float(df.loc[code_row + charges_offset, monthly_col]), 2) if pd.notnull(df.loc[code_row + charges_offset, monthly_col]) else ''
+                        charge_dollars_per_annum = round(float(df.loc[code_row + charges_offset, annual_col]), 2) if pd.notnull(df.loc[code_row + charges_offset, annual_col]) else ''
+                        charge_parking_spaces = df.loc[code_row + charges_offset, spaces_col]
+                        
+                        # New charge to concatenate
+                        new_charge = {
+                            'effective_year': effective_year, 
+                            'effective_month': effective_month,
+                            'property_id': property_id,
+                            'lease_code': lease_code,
+                            'charge_account': charge_account,
+                            'charge_description': charge_description,
+                            'charge_effective_date': charge_effective_date,
+                            'charge_dollars_per_m_sq': charge_dollars_per_m_sq,
+                            'charge_dollars_per_month': charge_dollars_per_month,
+                            'charge_dollars_per_annum': charge_dollars_per_annum,
+                            'charge_parking_spaces': charge_parking_spaces
+                            }
 
-                # Append the new charge to the DataFrame
-                charge_df = pd.DataFrame(new_charge, index=[0])
-                tenancy_current_charges_df = pd.concat([tenancy_current_charges_df, charge_df])
-                                
-                charges_offset += 1
-            
-            # New record to append
+                        # Concatenate the new charge to the DataFrame
+                        charge_df = pd.DataFrame(new_charge, index=[0])
+                        tenancy_current_charges_df = pd.concat([tenancy_current_charges_df, charge_df])
+
+                    # Move to next charges row                 
+                    charges_offset += 1
+            except Exception as e:
+                print(e)
+
+            # New tenancy to concatenate
             new_tenancy = {
                 'effective_year': effective_year, 
                 'effective_month': effective_month,
@@ -322,6 +330,7 @@ for sheet_name in sheet_names:
             tenancy_df = pd.DataFrame(new_tenancy, index=[0])
             tenancy_schedules_df = pd.concat([tenancy_schedules_df, tenancy_df])
 
+           
         good_sheets += 1
         count += 1
     except Exception as e:
