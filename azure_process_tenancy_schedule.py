@@ -194,6 +194,21 @@ tenancy_schedules_filename = f"{month}_{year.lower()}_tenancy_schedules.csv"
 # Construct the tenancy charges filename
 tenancy_charges_filename = f"{month}_{year.lower()}_tenancy_charges.csv"
 
+# Extract month and year from the original filename
+filename_parts = os.path.splitext(excel_file_path)[0].split(' - ')
+month_year_str = filename_parts[-1]  # Extracts 'April 2024'
+month, year = month_year_str.split()  # Splits 'April 2024' into 'April' and '2024'
+
+# Convert month to lowercase and remove spaces
+month = month.lower()
+month = month.replace(" ", "_")
+
+# Construct the tenancy schedules filename
+tenancy_schedules_filename = f"{month}_{year.lower()}_tenancy_schedules.csv"
+
+# Construct the tenancy charges filename
+tenancy_charges_filename = f"{month}_{year.lower()}_tenancy_charges.csv"
+
 
 folder_name = 'Cirrus 8 Reports/Buildings/Tenancy Schedules'
 blob_name = f'{folder_name}/{excel_file_path}'
