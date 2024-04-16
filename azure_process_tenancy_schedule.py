@@ -179,6 +179,22 @@ load_dotenv()
 # This parameter accepts the filename of an xlsx file to be transformed and saved as a csv file
 excel_file_path = 'Cirrus8 Tenancy Schedule (Compact) - April 2024.xlsx'
 
+# Extract month and year from the original filename
+filename_parts = os.path.splitext(excel_file_path)[0].split(' - ')
+month_year_str = filename_parts[-1]  # Extracts 'April 2024'
+month, year = month_year_str.split()  # Splits 'April 2024' into 'April' and '2024'
+
+# Convert month to lowercase and remove spaces
+month = month.lower()
+month = month.replace(" ", "_")
+
+# Construct the tenancy schedules filename
+tenancy_schedules_filename = f"{month}_{year.lower()}_tenancy_schedules.csv"
+
+# Construct the tenancy charges filename
+tenancy_charges_filename = f"{month}_{year.lower()}_tenancy_charges.csv"
+
+
 folder_name = 'Cirrus 8 Reports/Buildings/Tenancy Schedules'
 blob_name = f'{folder_name}/{excel_file_path}'
 
@@ -365,9 +381,9 @@ if (len(bad_sheets) > 0):
 tenancy_schedules_df.fillna('', inplace=True)  # Fill with '' 
 
 # Save the DataFrame as a CSV file
-tenancy_schedules_df.to_csv('april_2024_tenancy_schedules.csv', index=False)  # Set index=False to exclude row indexes from the CSV
-print('Saved tenancy schedule to: april_2024_tenancy_schedules.csv')
+tenancy_schedules_df.to_csv(tenancy_schedules_filename, index=False)  # Set index=False to exclude row indexes from the CSV
+print(f'Saved tenancy schedules to: {tenancy_schedules_filename}')
 
-tenancy_current_charges_df.to_csv('april_2024_tenancy_charges.csv', index=False)  # Set index=False to exclude row indexes from the CSV
-print('Saved tenancy schedule to: april_2024_tenancy_charges.csv')
+tenancy_current_charges_df.to_csv(tenancy_charges_filename, index=False)  # Set index=False to exclude row indexes from the CSV
+print(f'Saved tenancy charges to: {tenancy_charges_filename}')
 
