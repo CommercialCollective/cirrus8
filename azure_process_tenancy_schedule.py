@@ -1,4 +1,5 @@
 from azure.storage.blob import generate_blob_sas, BlobSasPermissions, BlobServiceClient, BlobClient, ContainerClient
+from azure.storage.blob import generate_blob_sas, BlobSasPermissions, BlobServiceClient, BlobClient, ContainerClient
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import numpy as np
@@ -117,6 +118,14 @@ def get_effective_year_month(file_path: str) -> tuple[int, int]:
         print(e)
         return -1, -1
 
+def generate_secure_url(blob_name, sas_token, account_name, container_name):
+    # Replace spaces with %20
+    encoded_blob_name = urllib.parse.quote(blob_name)
+    
+    # Construct the URL
+    url = f"https://{account_name}.blob.core.windows.net/{container_name}/{encoded_blob_name}?{sas_token}"
+    
+    return url
 
 def get_sas_url(blob_path: str) -> str:
     """
@@ -191,15 +200,63 @@ def extract_indexes(dictionary: dict, key: str) -> tuple[int, int]:
 load_dotenv()
 
 # This parameter accepts the filename of an xlsx file to be transformed and saved as a csv file
-excel_file_path = 'Cirrus8 Tenancy Schedule (Compact) - April 2024.xlsx'
+excel_file_path = 'Cirrus8 Tenancy Schedule (Compact) - March 2024.xlsx'
+
+# Extract month and year from the original filename
+filename_parts = os.path.splitext(excel_file_path)[0].split(' - ')
+month_year_str = filename_parts[-1]  # Extracts 'April 2024'
+month, year = month_year_str.split()  # Splits 'April 2024' into 'April' and '2024'
+
+# Convert month to lowercase and remove spaces
+month = month.lower()
+month = month.replace(" ", "_")
+
+# Construct the tenancy schedules filename
+tenancy_schedules_filename = f"{month}_{year.lower()}_tenancy_schedules.csv"
+
+# Construct the tenancy charges filename
+tenancy_charges_filename = f"{month}_{year.lower()}_tenancy_charges.csv"
+
+# Extract month and year from the original filename
+filename_parts = os.path.splitext(excel_file_path)[0].split(' - ')
+month_year_str = filename_parts[-1]  # Extracts 'April 2024'
+month, year = month_year_str.split()  # Splits 'April 2024' into 'April' and '2024'
+
+# Convert month to lowercase and remove spaces
+month = month.lower()
+month = month.replace(" ", "_")
+
+# Construct the tenancy schedules filename
+tenancy_schedules_filename = f"{month}_{year.lower()}_tenancy_schedules.csv"
+
+# Construct the tenancy charges filename
+tenancy_charges_filename = f"{month}_{year.lower()}_tenancy_charges.csv"
+
 
 folder_name = 'Cirrus 8 Reports/Buildings/Tenancy Schedules'
 blob_name = f'{folder_name}/{excel_file_path}'
 
 sas_url = get_sas_url(blob_name)
 
-# Load the workbook
-xls = pd.ExcelFile(sas_url)
+try:
+    # Print out the URL for debugging
+    print("SAS URL:", sas_url)
+    
+    # Attempt to read the Excel file
+    xls = pd.ExcelFile(sas_url)
+    
+    # If successful, proceed with further processing
+    # For example: df = pd.read_excel(excel_file)
+    
+except urllib.error.HTTPError as e:
+    # If 404 error, print error message
+    if e.code == 404:
+        print("HTTP Error 404: The specified resource does not exist.")
+    else:
+        # For other HTTP errors, print the error code and message
+        print(f"HTTP Error {e.code}: {e.reason}")
+        
+    # You can add more specific error handling or logging here
 
 # Get effective year and month
 effective_year, effective_month = get_effective_year_month(excel_file_path)
@@ -379,9 +436,9 @@ if (len(bad_sheets) > 0):
 tenancy_schedules_df.fillna('', inplace=True)  # Fill with '' 
 
 # Save the DataFrame as a CSV file
-tenancy_schedules_df.to_csv('april_2024_tenancy_schedules.csv', index=False)  # Set index=False to exclude row indexes from the CSV
-print('Saved tenancy schedules to: april_2024_tenancy_schedules.csv')
+tenancy_schedules_df.to_csv(tenancy_schedules_filename, index=False)  # Set index=False to exclude row indexes from the CSV
+print(f'Saved tenancy schedules to: {tenancy_schedules_filename}')
 
 tenancy_current_charges_df.to_csv('april_2024_tenancy_charges.csv', index=False)  # Set index=False to exclude row indexes from the CSV
-print('Saved tenancy charges to: april_2024_tenancy_charges.csv')
+print('Saved tenancy schedule to: april_2024_tenancy_charges.csv')
 
