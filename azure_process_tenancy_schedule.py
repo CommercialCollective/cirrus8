@@ -1,4 +1,4 @@
-from azure.storage.blob import generate_blob_sas
+from azure.storage.blob import generate_blob_sas, BlobSasPermissions, BlobServiceClient, BlobClient, ContainerClient
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import numpy as np
@@ -7,6 +7,9 @@ import os
 import warnings
 from urllib.parse import quote
 import re
+import urllib.parse
+import urllib.error
+
 
 warnings.simplefilter("ignore")
 
@@ -24,6 +27,16 @@ warnings.simplefilter("ignore")
 ##   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 ##   See the License for the specific language governing permissions and
 ##   limitations under the License.
+
+def generate_secure_url(blob_name, sas_token, account_name, container_name):
+    # Replace spaces with %20
+    encoded_blob_name = urllib.parse.quote(blob_name)
+    
+    # Construct the URL
+    url = f"https://{account_name}.blob.core.windows.net/{container_name}/{encoded_blob_name}?{sas_token}"
+    
+    return url
+
 
 def find_nth_value_in_dataframe(df: pd.DataFrame, search_value: str, nth: int = 1):
     """
@@ -133,7 +146,8 @@ def get_sas_url(blob_path: str) -> str:
                                 expiry=expiry_time)
 
     # Construct the SAS URL
-    sas_url = f"https://{account_name}.blob.core.windows.net/{container_name}/{quote(blob_path)}?{sas_token}"
+    sas_url = generate_secure_url(blob_name, sas_token, account_name, container_name)
+    print(f"Secure url: {sas_url}")
     
     return sas_url
 
@@ -366,8 +380,8 @@ tenancy_schedules_df.fillna('', inplace=True)  # Fill with ''
 
 # Save the DataFrame as a CSV file
 tenancy_schedules_df.to_csv('april_2024_tenancy_schedules.csv', index=False)  # Set index=False to exclude row indexes from the CSV
-print('Saved tenancy schedule to: april_2024_tenancy_schedules.csv')
+print('Saved tenancy schedules to: april_2024_tenancy_schedules.csv')
 
 tenancy_current_charges_df.to_csv('april_2024_tenancy_charges.csv', index=False)  # Set index=False to exclude row indexes from the CSV
-print('Saved tenancy schedule to: april_2024_tenancy_charges.csv')
+print('Saved tenancy charges to: april_2024_tenancy_charges.csv')
 
