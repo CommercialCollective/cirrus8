@@ -7,6 +7,10 @@ import os
 import warnings
 from urllib.parse import quote
 import re
+import urllib.parse
+import urllib.error
+
+
 
 warnings.simplefilter("ignore")
 
@@ -104,6 +108,14 @@ def get_effective_year_month(file_path: str) -> tuple[int, int]:
         print(e)
         return -1, -1
 
+def generate_secure_url(blob_name, sas_token, account_name, container_name):
+    # Replace spaces with %20
+    encoded_blob_name = urllib.parse.quote(blob_name)
+    
+    # Construct the URL
+    url = f"https://{account_name}.blob.core.windows.net/{container_name}/{encoded_blob_name}?{sas_token}"
+    
+    return url
 
 def get_sas_url(blob_path: str) -> str:
     """
@@ -133,9 +145,10 @@ def get_sas_url(blob_path: str) -> str:
                                 expiry=expiry_time)
 
     # Construct the SAS URL
-    sas_url = f"https://{account_name}.blob.core.windows.net/{container_name}/{quote(blob_path)}?{sas_token}"
-    
-    return sas_url
+    secure_url = generate_secure_url(blob_name, sas_token, account_name, container_name)
+    print(secure_url)
+
+    return secure_url
 
 
 def find_non_empty_rows(df: pd.DataFrame, column_index: int) -> list[int]:
@@ -215,8 +228,25 @@ blob_name = f'{folder_name}/{excel_file_path}'
 
 sas_url = get_sas_url(blob_name)
 
-# Load the workbook
-xls = pd.ExcelFile(sas_url)
+try:
+    # Print out the URL for debugging
+    print("SAS URL:", sas_url)
+    
+    # Attempt to read the Excel file
+    xls = pd.ExcelFile(sas_url)
+    
+    # If successful, proceed with further processing
+    # For example: df = pd.read_excel(excel_file)
+    
+except urllib.error.HTTPError as e:
+    # If 404 error, print error message
+    if e.code == 404:
+        print("HTTP Error 404: The specified resource does not exist.")
+    else:
+        # For other HTTP errors, print the error code and message
+        print(f"HTTP Error {e.code}: {e.reason}")
+        
+    # You can add more specific error handling or logging here
 
 # Get effective year and month
 effective_year, effective_month = get_effective_year_month(excel_file_path)
