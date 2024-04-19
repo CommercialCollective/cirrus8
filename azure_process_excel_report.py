@@ -28,6 +28,56 @@ warnings.simplefilter("ignore")
 ##   See the License for the specific language governing permissions and
 ##   limitations under the License.
 
+def save_df_as_csv_blob(worksheet_df: pd.DataFrame, account_name: str, account_key: str, container_name: str, folder_name: str, worksheet_name: str, year_month_str: str):
+    # Define your Azure Storage account details
+
+    csv_file = year_month_str + '_' + os.path.splitext(worksheet_name)[0].replace(" ", "") + '.csv'
+
+    foldername = f"{folder_name}/Inbox"  # If you want to save in a specific folder
+
+    # Initialize the BlobServiceClient
+    blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net", credential=account_key)
+
+    # Initialize the ContainerClient
+    container_client = blob_service_client.get_container_client(container_name)
+
+    # Define the path where you want to save the file in Azure Blob Storage
+    report_blob_name = f'{foldername}/{csv_file}'
+
+    # Convert DataFrame to CSV and save to Azure Blob Storage
+    report_csv_bytes = worksheet_df.to_csv(index=False).encode()
+    blob_client = container_client.get_blob_client(report_blob_name)
+    blob_client.upload_blob(report_csv_bytes, overwrite=True)
+
+    print(f"{report_blob_name} - successfully saved to Azure Blob Storage.")
+
+
+def load_excel_data(file_path, skip_rows_dict=None):
+    # Load the Excel file
+    xls = pd.ExcelFile(file_path)
+    
+    # Dictionary to store dataframes
+    dataframes_dict = {}
+    
+    # Iterate through each worksheet
+    for sheet_name in xls.sheet_names:
+        # Load the sheet
+        df = xls.parse(sheet_name, header=None)
+        
+        # Skip variable number of rows if specified
+        skip_rows = skip_rows_dict.get(sheet_name, 0) if skip_rows_dict else 0
+        df = df.iloc[skip_rows:]
+                
+        # Assuming the first row contains headers
+        headers = df.iloc[0].tolist()
+        df.columns = headers
+        
+        # Append dataframe to dictionary using worksheet name as key
+        dataframes_dict[sheet_name] = df
+        
+    return dataframes_dict
+
+
 def generate_secure_url(blob_name, sas_token, account_name, container_name):
     # Replace spaces with %20
     encoded_blob_name = urllib.parse.quote(blob_name)
@@ -67,6 +117,7 @@ def find_nth_value_in_dataframe(df: pd.DataFrame, search_value: str, nth: int = 
                     return row_indices[nth - hit_count - 1], col_idx
     # If search_value is not found, return None
     return None
+
 
 def get_row_property_value(df: pd.DataFrame, prop_name: str) -> str:
     """
@@ -200,168 +251,66 @@ blob_name = f'{folder_name}/{excel_file_path}'
 
 sas_url = get_sas_url(blob_name)
 
-# Load the workbook
-xls = pd.ExcelFile(sas_url)
+# Specify the number of rows to skip for each sheet
+skip_rows_dict = {
+    "Supplier Reconciliation": 0, 
+    "Tenant Reconciliation": 0,
+    "Property List": 0, 
+    "Lease Expiry": 0,
+    "Budgeted manfees summary": 2, 
+    "Budget": 4,
+    "Vacant Units": 0, 
+    "Vacated Leases": 0,
+    "Tenant Uninvoiced Charges": 0, 
+    "Tenant Charges": 0,
+    "Management Fee per Account": 0, 
+    "Current tenants with no rent re": 0,
+    "Unallocated Cash": 0, 
+    "List of Leases": 0,
+    "Man fees charged per PM": 0, 
+    "Man fees charged for a period": 0,
+    "Man fees paid per PM": 0, 
+    "Man fees paid for a period ": 0,
+    "AP Journal": 0, 
+    "Primary Property Contact": 0,
+    "Primary Company Contact": 0, 
+    "Primary Lease Contact": 0,
+    "List of Leases Notes": 0, 
+    "AP Allocations": 0,
+    "AR Journal": 0, 
+    "Check Next Charge Date": 0,
+    "Open Rent Review List": 0, 
+    "Created Properties": 0,
+    "Inactive Properties": 0, 
+    "Occupied Units As Of To Date": 0
+    } 
 
-# Get effective year and month
-effective_year, effective_month = get_effective_year_month(excel_file_path)
+excel_data = load_excel_data(sas_url, skip_rows_dict)
 
-# Get the names of all sheets in the workbook
-sheet_names = xls.sheet_names
-
-# Create a dictionary of dataframes
-print(f'Loading {len(sheet_names)} worksheets into a dictionary ...')
-dfs = {sheet: xls.parse(sheet, header=None, index_col=None, skiprows=5) for sheet in sheet_names}
+count = 0
+limit = len(excel_data)
+print(f'Processing {limit} worksheets:')
 
 good_sheets = 0
 bad_sheets = []
 
-count = 0
-limit = len(dfs)
-print(f'Processing {limit} dataframes:')
+# Define your Azure Storage account details
+account_name = 'collectivestorageaccount'
+account_key = 'LfOUl1oTMxfpqD9Ftlvj0Qkko9ewr950TCTa0Mo+4HnbfF1ga2OLR3RXSUnnoZgxvzYqFijmWhE2+AStZ9G6Gw=='
+container_name = 'bronze'
 
-# Existing DataFrame
-excel_reports_df = pd.DataFrame({})
-tenancy_current_charges_df = pd.DataFrame({})
+# Get effective year and month
+effective_year, effective_month = get_effective_year_month(excel_file_path)
 
-for sheet_name in sheet_names:
+year_month_str = str(effective_year) + '_' + str(effective_month)
+
+for sheet_name, df in excel_data.items():
     try:
-        df = dfs[sheet_name]
-        
-        prop_name = 'Property ID:'
-        property_id = get_row_property_value(df, prop_name)
-        
-        # Remove rows
-        df = df.iloc[2:]
-
-        # Create list of table column labels
-        header_items = ["Unit", "Lease Code", "Start", "Expiry", "NLA", "Account", "Description", 
-                        "Effective", "Per m", "Monthly", "Annual", "Spaces", "Date", "Description", "Type"]
-
-        # Create an empty dictionary
-        header_dict = {}
-        
-        last_item = ""
-        # Populate the dictionary by iterating over the list of header_items
-        for item in header_items:
-            # Get the tuple containing row and column indices for the current item
-            if item == "Description" and last_item == "Date":
-                row_idx, col_idx = find_nth_value_in_dataframe(df, item, nth=2)
-                # Add a new dictionary item with the string as the key and the tuple as the value
-                header_dict["Rent Review " + item] = (row_idx, col_idx)
-            else:
-                row_idx, col_idx = find_nth_value_in_dataframe(df, item)
-                # Add a new dictionary item with the string as the key and the tuple as the value
-                header_dict[item] = (row_idx, col_idx)
-            last_item = item
-            
-        # Remove rows
-        df = df.iloc[2:]
-        
-        # New tenancy charges
-        account_row, account_col = extract_indexes(header_dict, 'Account')
-        desc_row, desc_col = extract_indexes(header_dict, 'Description')
-        effective_row, effective_col = extract_indexes(header_dict, 'Effective')
-        per_row, per_col = extract_indexes(header_dict, 'Per m')
-        monthly_row, monthly_col = extract_indexes(header_dict, 'Monthly')
-        annual_row, annual_col = extract_indexes(header_dict, 'Annual')
-        spaces_row, spaces_col = extract_indexes(header_dict, 'Spaces')
-        
-        # Get Lease Code Rows for sheet
-        lease_row, lease_col = extract_indexes(header_dict, 'Lease Code')
-        lease_code_rows = find_non_empty_rows(df, column_index=lease_col)
-        for code_row in lease_code_rows:
-            unit_row, unit_col = extract_indexes(header_dict, 'Unit')
-            unit = df.loc[code_row, unit_col]
-            
-            lease_code = df.loc[code_row, lease_col].strip()
-            
-            start_row, start_col = extract_indexes(header_dict, 'Start')
-            lease_terms_start = df.loc[code_row, start_col] if lease_code != 'Vacant' else ''
-            
-            expiry_row, expiry_col = extract_indexes(header_dict, 'Expiry')
-            lease_terms_expiry = df.loc[code_row, expiry_col] if lease_code != 'Vacant' else ''
-            lease_terms_term = str(df.loc[code_row + 1, expiry_col]).strip() if lease_code != 'Vacant' and pd.notnull(df.loc[code_row + 1, expiry_col]) else ''
-            lease_terms_option = str(df.loc[code_row + 2, expiry_col]).strip() if lease_code != 'Vacant' and pd.notnull(df.loc[code_row + 2, expiry_col]) else ''
-            
-            nla_row, nla_col = extract_indexes(header_dict, 'NLA')
-            lease_terms_nla = df.loc[code_row, nla_col] if lease_code != 'Vacant' else ''
-            
-            date_row, date_col = extract_indexes(header_dict, 'Date')
-            rent_review_date = df.loc[code_row, date_col] if lease_code != 'Vacant' else ''
-            
-            review_desc_row, review_desc_col = extract_indexes(header_dict, 'Rent Review Description')
-            rent_review_description = str(df.loc[code_row, review_desc_col]).strip() if lease_code != 'Vacant' and pd.notnull(df.loc[code_row, review_desc_col]) else ''
-            
-            review_type_row, review_type_col = extract_indexes(header_dict, 'Type')
-            rent_review_type = str(df.loc[code_row, review_type_col]).strip() if lease_code != 'Vacant' and pd.notnull(df.loc[code_row, review_type_col]) else ''
-
-            # New tenancy charges
-            charges_offset = 0
-            if lease_code != 'Vacant' and pd.notnull(df.loc[code_row, spaces_col]):
-                try:
-                    while (pd.notnull(df.loc[code_row + charges_offset, account_col]) or df.loc[code_row + charges_offset, desc_col] != 'Total'):
-                        if df.loc[code_row + charges_offset, 4] == 'Powered by Cirrus8 Software':
-                            # This signifies the last lease code charges for the worksheet have been processed
-                            break  # Exiting the while loop
-
-                        if (pd.notnull(df.loc[code_row + charges_offset, account_col]) and pd.notnull(df.loc[code_row + charges_offset, desc_col])):
-                            charge_account = df.loc[code_row + charges_offset, account_col]
-                            charge_description = df.loc[code_row + charges_offset, desc_col]
-                            charge_effective_date = df.loc[code_row + charges_offset, effective_col]
-                            charge_dollars_per_m_sq = round(float(df.loc[code_row + charges_offset, per_col]), 2) if pd.notnull(df.loc[code_row + charges_offset, per_col]) else ''
-                            charge_dollars_per_month = round(float(df.loc[code_row + charges_offset, monthly_col]), 2) if pd.notnull(df.loc[code_row + charges_offset, monthly_col]) else ''
-                            charge_dollars_per_annum = round(float(df.loc[code_row + charges_offset, annual_col]), 2) if pd.notnull(df.loc[code_row + charges_offset, annual_col]) else ''
-                            charge_parking_spaces = df.loc[code_row + charges_offset, spaces_col]
-                            
-                            # New charge to concatenate
-                            new_charge = {
-                                'effective_year': effective_year, 
-                                'effective_month': effective_month,
-                                'property_id': property_id,
-                                'lease_code': lease_code,
-                                'charge_account': charge_account,
-                                'charge_description': charge_description,
-                                'charge_effective_date': charge_effective_date,
-                                'charge_dollars_per_m_sq': charge_dollars_per_m_sq,
-                                'charge_dollars_per_month': charge_dollars_per_month,
-                                'charge_dollars_per_annum': charge_dollars_per_annum,
-                                'charge_parking_spaces': charge_parking_spaces
-                                }
-                            
-                            # Concatenate the new charge to the DataFrame
-                            charge_df = pd.DataFrame(new_charge, index=[0])
-                            tenancy_current_charges_df = pd.concat([tenancy_current_charges_df, charge_df])
-
-                        # Move to next charges row                 
-                        charges_offset += 1
-                except Exception as e:
-                    print(f'Exception: {e} "{sheet_name}" property: {property_id} - lease code: {lease_code} account: {charge_account}')
-
-            # New tenancy to concatenate
-            new_tenancy = {
-                'effective_year': effective_year, 
-                'effective_month': effective_month,
-                'property_id': property_id,
-                'lease_code': lease_code,
-                'lease_unit': unit,
-                'lease_terms_start': lease_terms_start,
-                'lease_terms_expiry': lease_terms_expiry,
-                'lease_terms_term': lease_terms_term,
-                'lease_terms_option': lease_terms_option,
-                'lease_terms_nla': lease_terms_nla,
-                'rent_review_date': rent_review_date,
-                'rent_review_description': rent_review_description,
-                'rent_review_type': rent_review_type
-                }
-
-            # Append the new tenancy to the DataFrame
-            tenancy_df = pd.DataFrame(new_tenancy, index=[0])
-            excel_reports_df = pd.concat([excel_reports_df, tenancy_df])
-
-           
+        save_df_as_csv_blob(df, account_name=account_name, account_key=account_key, container_name=container_name, 
+                            folder_name=folder_name, worksheet_name=sheet_name, year_month_str=year_month_str)
         good_sheets += 1
         count += 1
+
     except Exception as e:
         # print(f'Worksheet: {sheet_name} - Error: Failed to load')
         bad_sheets.append(f'Worksheet: {sheet_name} - {e.args[0]}')
@@ -371,19 +320,10 @@ for sheet_name in sheet_names:
     
 print("")
 if (good_sheets > 0):
-    print(f'There were ({good_sheets}) good sheets.')
+    print(f'There were ({good_sheets}) good worksheets.')
 if (len(bad_sheets) > 0):
     print(f'The following ({len(bad_sheets)}) sheets failed when loading:')
     for bad_sheet in bad_sheets:
         print(bad_sheet)
 
-# Fill NaN values with a specific value
-excel_reports_df.fillna('', inplace=True)  # Fill with '' 
-
-# Save the DataFrame as a CSV file
-excel_reports_df.to_csv('april_2024_tenancy_schedules.csv', index=False)  # Set index=False to exclude row indexes from the CSV
-print('Saved tenancy schedules to: april_2024_tenancy_schedules.csv')
-
-tenancy_current_charges_df.to_csv('april_2024_tenancy_charges.csv', index=False)  # Set index=False to exclude row indexes from the CSV
-print('Saved tenancy charges to: april_2024_tenancy_charges.csv')
 
