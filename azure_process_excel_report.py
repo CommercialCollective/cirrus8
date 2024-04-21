@@ -51,6 +51,25 @@ def save_df_as_csv_blob(worksheet_df: pd.DataFrame, account_name: str, account_k
 
     print(f"{report_blob_name} - successfully saved to Azure Blob Storage.")
 
+def preprocess_strings(input_list):
+    # Convert the input list to a Pandas Series
+    series = pd.Series(input_list)
+    
+    # Apply the preprocessing steps
+    processed_series = (
+        series
+        .str.lower()             # Convert to lower case
+        .str.strip()             # Trim leading and trailing spaces
+        .str.replace(' ', '_')   # Replace spaces with underscores
+        .str.replace('/', '_')
+        .str.replace('#', 'no')
+    )
+    
+    # Convert the processed Series back to a list
+    processed_list = processed_series.tolist()
+    
+    return processed_list
+
 
 def load_excel_data(file_path, skip_rows_dict=None):
     # Load the Excel file
@@ -61,16 +80,19 @@ def load_excel_data(file_path, skip_rows_dict=None):
     
     # Iterate through each worksheet
     for sheet_name in xls.sheet_names:
+        # Skip variable number of rows if specified
+        skip_rows = skip_rows_dict.get(sheet_name, 0) if skip_rows_dict else 0
+        
         # Load the sheet
         df = xls.parse(sheet_name, header=None)
         
-        # Skip variable number of rows if specified
-        skip_rows = skip_rows_dict.get(sheet_name, 0) if skip_rows_dict else 0
         df = df.iloc[skip_rows:]
                 
-        # Assuming the first row contains headers
-        headers = df.iloc[0].tolist()
-        df.columns = headers
+        # Assuming the first row contains columns
+        columns = preprocess_strings(df.iloc[0].tolist())
+        df.columns = columns
+        
+        df = df.iloc[skip_rows + 1:]
         
         # Append dataframe to dictionary using worksheet name as key
         dataframes_dict[sheet_name] = df
@@ -304,12 +326,15 @@ effective_year, effective_month = get_effective_year_month(excel_file_path)
 
 year_month_str = str(effective_year) + '_' + str(effective_month)
 
+excluded_sheets = ['Budget']
+
 for sheet_name, df in excel_data.items():
     try:
-        save_df_as_csv_blob(df, account_name=account_name, account_key=account_key, container_name=container_name, 
-                            folder_name=folder_name, worksheet_name=sheet_name, year_month_str=year_month_str)
-        good_sheets += 1
-        count += 1
+        if sheet_name not in excluded_sheets:
+            save_df_as_csv_blob(df, account_name=account_name, account_key=account_key, container_name=container_name, 
+                                folder_name=folder_name, worksheet_name=sheet_name, year_month_str=year_month_str)
+            good_sheets += 1
+            count += 1
 
     except Exception as e:
         # print(f'Worksheet: {sheet_name} - Error: Failed to load')
