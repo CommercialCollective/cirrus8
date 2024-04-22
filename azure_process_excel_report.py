@@ -31,9 +31,11 @@ warnings.simplefilter("ignore")
 def save_df_as_csv_blob(worksheet_df: pd.DataFrame, account_name: str, account_key: str, container_name: str, folder_name: str, worksheet_name: str, year_month_str: str):
     # Define your Azure Storage account details
 
-    csv_file = year_month_str + '_' + os.path.splitext(worksheet_name)[0].replace(" ", "") + '.csv'
+    csv_file = year_month_str + '_' + os.path.splitext(worksheet_name)[0].replace(" ", "_") + '.csv'
 
-    foldername = f"{folder_name}/Inbox"  # If you want to save in a specific folder
+    sub_folder = os.path.splitext(worksheet_name)[0].replace(" ", "_").lower()
+
+    foldername = f"{folder_name}/Inbox/{sub_folder}"  # If you want to save in a specific folder
 
     # Initialize the BlobServiceClient
     blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net", credential=account_key)
@@ -61,8 +63,8 @@ def preprocess_strings(input_list):
         .str.lower()             # Convert to lower case
         .str.strip()             # Trim leading and trailing spaces
         .str.replace(' ', '_')   # Replace spaces with underscores
-        .str.replace('/', '_')
-        .str.replace('#', 'no')
+        .str.replace('/', '_')   # Replace / with underscores
+        .str.replace('#', 'no')  # Replace # with 'no'
     )
     
     # Convert the processed Series back to a list
@@ -71,7 +73,8 @@ def preprocess_strings(input_list):
     return processed_list
 
 
-def load_excel_data(file_path, skip_rows_dict=None):
+def load_excel_data(file_path, year: int, month: int, skip_rows_dict=None):
+    num_columns_in_annual_table = 5
     # Load the Excel file
     xls = pd.ExcelFile(file_path)
     
@@ -85,14 +88,28 @@ def load_excel_data(file_path, skip_rows_dict=None):
         
         # Load the sheet
         df = xls.parse(sheet_name, header=None)
-        
         df = df.iloc[skip_rows:]
+
+        if sheet_name == 'Budget':
+            # Adjust num_columns_in_annual_table accordingly
+            df = df.iloc[:, :num_columns_in_annual_table]
                 
         # Assuming the first row contains columns
         columns = preprocess_strings(df.iloc[0].tolist())
         df.columns = columns
         
-        df = df.iloc[skip_rows + 1:]
+        # Data is from 2nd row onwards, i.e. under the column header.
+        df = df.iloc[1:]
+
+        # Insert 'year' column at the far left of the dataframe
+        df.insert(0, 'report_year', year)
+        
+        # Insert 'month' column at the position next to 'year'
+        df.insert(1, 'report_month', month)
+        
+        # Ensure the values are in the range of 1 to 12
+        df['report_year'] = df['report_year'].astype(int)
+        df['report_month'] = df['report_month'].astype(int)
         
         # Append dataframe to dictionary using worksheet name as key
         dataframes_dict[sheet_name] = df
@@ -273,6 +290,13 @@ blob_name = f'{folder_name}/{excel_file_path}'
 
 sas_url = get_sas_url(blob_name)
 
+# Get effective year and month
+effective_year, effective_month = get_effective_year_month(excel_file_path)
+
+year_month_str = str(effective_year) + '_' + str(effective_month)
+
+excluded_sheets = []
+
 # Specify the number of rows to skip for each sheet
 skip_rows_dict = {
     "Supplier Reconciliation": 0, 
@@ -307,7 +331,7 @@ skip_rows_dict = {
     "Occupied Units As Of To Date": 0
     } 
 
-excel_data = load_excel_data(sas_url, skip_rows_dict)
+excel_data = load_excel_data(sas_url, effective_year, effective_month, skip_rows_dict)
 
 count = 0
 limit = len(excel_data)
@@ -320,13 +344,6 @@ bad_sheets = []
 account_name = 'collectivestorageaccount'
 account_key = 'LfOUl1oTMxfpqD9Ftlvj0Qkko9ewr950TCTa0Mo+4HnbfF1ga2OLR3RXSUnnoZgxvzYqFijmWhE2+AStZ9G6Gw=='
 container_name = 'bronze'
-
-# Get effective year and month
-effective_year, effective_month = get_effective_year_month(excel_file_path)
-
-year_month_str = str(effective_year) + '_' + str(effective_month)
-
-excluded_sheets = ['Budget']
 
 for sheet_name, df in excel_data.items():
     try:
